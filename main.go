@@ -25,5 +25,12 @@ func main() {
 	if err != nil {
 		log.Panicf("Couldn't marshal data %v", err)
 	}
-	fmt.Printf("persons: %s", string(bs))
+	fmt.Printf("persons in json format: %s\n", string(bs))
+
+	xp1 := []person{}
+	err = json.Unmarshal(bs, &xp1)
+	if err != nil {
+		log.Panicf("Couldn't unmarshal data %v", err)
+	}
+	fmt.Printf("persons in go format: %v\n", xp1)
 }
