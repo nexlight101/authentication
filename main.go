@@ -35,19 +35,15 @@ func main() {
 	// Get a template controller value.
 	c := NewController(tpl)
 
-	p1 := person{
-		First: "Jenny",
-	}
+	// p2 := person{
+	// 	First: "James",
+	// }
 
-	p2 := person{
-		First: "James",
-	}
-
-	xp = []person{p1, p2}
+	// xp = []person{p1, p2}
 	// handle the root page :/
 	http.HandleFunc("/", c.index)
 	http.HandleFunc("/encode", foo)
-	http.HandleFunc("/encode", bar)
+	http.HandleFunc("/decode", bar)
 
 	// xp1 := []person{}
 	// err = json.Unmarshal(bs, &xp1)
@@ -62,7 +58,13 @@ func main() {
 
 // foo encodes data to json
 func foo(w http.ResponseWriter, req *http.Request) {
-
+	p1 := person{
+		First: "Jenny",
+	}
+	err := json.NewEncoder(w).Encode(p1)
+	if err != nil {
+		log.Println("Encoded bad data: ", err)
+	}
 }
 
 // bar decodes data from json
