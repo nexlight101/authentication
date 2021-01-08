@@ -69,7 +69,12 @@ func foo(w http.ResponseWriter, req *http.Request) {
 
 // bar decodes data from json
 func bar(w http.ResponseWriter, req *http.Request) {
-
+	p2 := person{}
+	err := json.NewDecoder(req.Body).Decode(&p2)
+	if err != nil {
+		log.Println("Bad data to decode ", err)
+	}
+	fmt.Println(p2)
 }
 
 // jM marshal takes slice of person, returns json byte slice
