@@ -46,7 +46,7 @@ func main() {
 	xp = []person{p1, p2}
 	// handle the root page :/
 	http.HandleFunc("/", c.index)
-	// http.HandleFunc("/decode", c.decode)
+	http.HandleFunc("/decode", c.decode)
 
 	// xp1 := []person{}
 	// err = json.Unmarshal(bs, &xp1)
@@ -93,9 +93,9 @@ func (c Controller) index(w http.ResponseWriter, req *http.Request) {
 	c.tpl.ExecuteTemplate(w, "index.gohtml", templateData)
 }
 
-// // Decode root: /decode
-// func (c Controller) decode(w http.ResponseWriter, req *http.Request) {
-// 	// populate the template struct with empty values
+// Decode root: /decode
+func (c Controller) decode(w http.ResponseWriter, req *http.Request) {
+	// populate the template struct with empty values
 
-// 	fmt.Println("Persons ", jD(req))
-// }
+	fmt.Println("Persons ", jD(req))
+}
