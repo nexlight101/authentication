@@ -35,15 +35,18 @@ func main() {
 	// Get a template controller value.
 	c := NewController(tpl)
 
-	// p2 := person{
-	// 	First: "James",
-	// }
+	p1 := person{
+		First: "Jenny",
+	}
 
-	// xp = []person{p1, p2}
+	p2 := person{
+		First: "Tim",
+	}
+
+	xp = []person{p1, p2}
 	// handle the root page :/
 	http.HandleFunc("/", c.index)
-	http.HandleFunc("/encode", foo)
-	http.HandleFunc("/decode", bar)
+	// http.HandleFunc("/decode", c.decode)
 
 	// xp1 := []person{}
 	// err = json.Unmarshal(bs, &xp1)
@@ -56,27 +59,6 @@ func main() {
 
 }
 
-// foo encodes data to json
-func foo(w http.ResponseWriter, req *http.Request) {
-	p1 := person{
-		First: "Jenny",
-	}
-	err := json.NewEncoder(w).Encode(p1)
-	if err != nil {
-		log.Println("Encoded bad data: ", err)
-	}
-}
-
-// bar decodes data from json
-func bar(w http.ResponseWriter, req *http.Request) {
-	p2 := person{}
-	err := json.NewDecoder(req.Body).Decode(&p2)
-	if err != nil {
-		log.Println("Bad data to decode ", err)
-	}
-	fmt.Println(p2)
-}
-
 // jM marshal takes slice of person, returns json byte slice
 func jM(xp []person) []byte {
 	bs, err := json.Marshal(xp)
@@ -85,6 +67,18 @@ func jM(xp []person) []byte {
 	}
 	fmt.Printf("persons in json format: %s\n", string(bs))
 	return bs
+}
+
+// jD decodes json request data to go person struct slice
+func jD(req *http.Request) []person {
+	xp2 := []person{}
+	// Decode requet body
+	err := json.NewDecoder(req.Body).Decode(&xp2)
+	if err != nil {
+		log.Panicf("Couldn't marshal data %v", err)
+	}
+	fmt.Printf("persons : %v\n", xp2)
+	return xp2
 }
 
 // index is the landing page: /
@@ -98,3 +92,10 @@ func (c Controller) index(w http.ResponseWriter, req *http.Request) {
 	}
 	c.tpl.ExecuteTemplate(w, "index.gohtml", templateData)
 }
+
+// // Decode root: /decode
+// func (c Controller) decode(w http.ResponseWriter, req *http.Request) {
+// 	// populate the template struct with empty values
+
+// 	fmt.Println("Persons ", jD(req))
+// }
