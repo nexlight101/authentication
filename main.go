@@ -19,7 +19,9 @@ type UserClaims struct {
 
 var key = []byte{}
 
-// Valid function test if userClaims are valid
+// ***************** JWT code ***************
+
+// Valid tests if UserClaims are valid
 func (u *UserClaims) Valid() error {
 	if !u.VerifyExpiresAt(time.Now().Unix(), true) {
 		return fmt.Errorf("Token has expired")
@@ -31,6 +33,17 @@ func (u *UserClaims) Valid() error {
 	return nil
 }
 
+// createToken creates a jwt token
+func createToken(c *UserClaims) (string, error) {
+	t := jwt.NewWithClaims(jwt.SigningMethodHS512, c)
+	signedToken, err := t.SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("Could not sign token in createToken: %w", err)
+	}
+	return signedToken, nil
+}
+
+// ***************** end JWT code ***************
 func main() {
 	pass := "123456789"
 
@@ -51,6 +64,8 @@ func main() {
 	log.Println("Logged in!")
 }
 
+// ***************** Password code ***************
+
 // hashPassword hashes a password takes in password as string and returns hash as slice of bytes
 func hashPassword(password string) ([]byte, error) {
 	bs, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -70,6 +85,9 @@ func comparePassword(password string, hashedPass []byte) error {
 	return nil
 }
 
+// ***************** end Password code ***************
+
+// ***************** HMAC code ***************
 // signMessage signs a message with HMAC takes in slice of bytes
 // retuns signed message slice of bytes and error
 func signMessage(msg []byte) ([]byte, error) {
@@ -97,3 +115,5 @@ func checkSig(msg, sig []byte) (bool, error) {
 	same := hmac.Equal(newSig, sig)
 	return same, nil
 }
+
+// ***************** end JWT code ***************
