@@ -5,11 +5,31 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"log"
+	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// UserClaims is a custom claims struct containing StandardClaims type
+type UserClaims struct {
+	jwt.StandardClaims
+	SessionID int64
+}
+
 var key = []byte{}
+
+// Valid function test if userClaims are valid
+func (u *UserClaims) Valid() error {
+	if !u.VerifyExpiresAt(time.Now().Unix(), true) {
+		return fmt.Errorf("Token has expired")
+	}
+
+	if u.SessionID == 0 {
+		return fmt.Errorf("Invalid session ID")
+	}
+	return nil
+}
 
 func main() {
 	pass := "123456789"
@@ -53,8 +73,8 @@ func comparePassword(password string, hashedPass []byte) error {
 // signMessage signs a message with HMAC takes in slice of bytes
 // retuns signed message slice of bytes and error
 func signMessage(msg []byte) ([]byte, error) {
-	h := hmac.New(sha512.New, key)
-	_, err := h.Write(msg)
+	h := hmac.New(sha512.New, key) // Craete a signer by specifing the hash algorythm(sha512.New function) and the key.
+	_, err := h.Write(msg)         // Use the write method(sign) of the signer(h) to sign msg.
 	if err != nil {
 		return nil, fmt.Errorf("Error in signMessage while hashing message: %w", err)
 	}
@@ -62,6 +82,7 @@ func signMessage(msg []byte) ([]byte, error) {
 	// to not modify your encoded message
 	signature := h.Sum(nil)
 	return signature, nil
+
 }
 
 // checkSig compares signature from received message to original signature
