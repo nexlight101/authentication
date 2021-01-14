@@ -2,12 +2,15 @@ package main
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha512"
 	"fmt"
+	"io"
 	"log"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gofrs/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -17,7 +20,41 @@ type UserClaims struct {
 	SessionID int64
 }
 
-var key = []byte{}
+// key struct for holding keys
+// You need to Delete all week old keys periodically
+// Typically use a db to store these and a cron job to create one every hour
+// and delete weekly
+type key struct {
+	key     []byte
+	created time.Time
+}
+
+var (
+	// For storing keys to rotate key:string value:[]byte
+	keys = map[string]key{}
+	// Stores the current key id
+	currentKid = ""
+)
+
+// generateNewKey genarates a new key and stores it in the key map
+func genarateNewKey() error {
+	newKey := make([]byte, 64)
+	_, err := io.ReadFull(rand.Reader, newKey)
+	if err != nil {
+		return fmt.Errorf("Error in generateNewKey while generating key %w", err)
+	}
+	uid, err := uuid.NewV4()
+	if err != nil {
+		return fmt.Errorf("Error in generateNewKey while generating kid: %w", err)
+	}
+
+	keys[uid.String()] = key{
+		key:     newKey,
+		created: time.Now(),
+	}
+	currentKid = uid.String()
+	return nil
+}
 
 // ***************** JWT code ***************
 
@@ -35,22 +72,46 @@ func (u *UserClaims) Valid() error {
 
 // createToken creates a jwt token
 func createToken(c *UserClaims) (string, error) {
+	// sign my token with a signing method(jwt.SigningMethodHS512) and my UserClaims type
+	// This creates a signer(t)
 	t := jwt.NewWithClaims(jwt.SigningMethodHS512, c)
-	signedToken, err := t.SignedString(key)
+	// Get the signed token into a string type by using the signer's string method and the provided key
+	signedToken, err := t.SignedString(keys[currentKid].key)
 	if err != nil {
 		return "", fmt.Errorf("Could not sign token in createToken: %w", err)
 	}
 	return signedToken, nil
 }
 
+// parseToken evaluate a received token for validity
+func parseToken(signedToken string) (*UserClaims, error) {
+	t, err := jwt.ParseWithClaims(signedToken, &UserClaims{}, func(t *jwt.Token) (interface{}, error) {
+		if t.Method.Alg() != jwt.SigningMethodHS512.Alg() {
+			return nil, fmt.Errorf("Invalid signing algorithm")
+		}
+		kid, ok := t.Header["kid"].(string) // assert the interface value is a string
+		if !ok {
+			return nil, fmt.Errorf("Invalid key ID")
+		}
+		k, ok := keys[kid]
+		if !ok {
+			return nil, fmt.Errorf("Invalid key ID")
+		}
+		return k.key, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Error in parseToken while parsing token %w", err)
+	}
+
+	if !t.Valid {
+		return nil, fmt.Errorf("Error in parseToken, token is not valid")
+	}
+	return t.Claims.(*UserClaims), nil
+}
+
 // ***************** end JWT code ***************
 func main() {
 	pass := "123456789"
-
-	//Generate 64 bit key for use with hmac signing (Never do this!!!, use random generator)
-	for i := 1; i <= 64; i++ {
-		key = append(key, byte(i))
-	}
 
 	hashedPass, err := hashPassword(pass)
 	if err != nil {
@@ -91,8 +152,8 @@ func comparePassword(password string, hashedPass []byte) error {
 // signMessage signs a message with HMAC takes in slice of bytes
 // retuns signed message slice of bytes and error
 func signMessage(msg []byte) ([]byte, error) {
-	h := hmac.New(sha512.New, key) // Craete a signer by specifing the hash algorythm(sha512.New function) and the key.
-	_, err := h.Write(msg)         // Use the write method(sign) of the signer(h) to sign msg.
+	h := hmac.New(sha512.New, keys[currentKid].key) // Craete a signer by specifing the hash algorythm(sha512.New function) and the key.
+	_, err := h.Write(msg)                          // Use the write method(sign) of the signer(h) to sign msg.
 	if err != nil {
 		return nil, fmt.Errorf("Error in signMessage while hashing message: %w", err)
 	}
