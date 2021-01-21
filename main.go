@@ -1,28 +1,59 @@
 package main
 
 import (
-	"crypto/sha512"
 	"fmt"
 	"io"
-	"log"
-	"os"
+	"net/http"
 )
 
 func main() {
-	f, err := os.Open("sample-file.txt")
-	if err != nil {
-		log.Fatalln("Could not open file ", err)
+	http.HandleFunc("/", index)
+	http.HandleFunc("/submit", procces)
+	http.ListenAndServe(":8080", nil)
+
+}
+
+// index displays root page: /
+func index(w http.ResponseWriter, r *http.Request) {
+	html := `<!DOCTYPE html>
+	<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Document</title>
+	</head>
+	<body>
+		<form action="/submit" method="POST">
+			<input type="email" name="email">
+			<input type="submit">
+		</form>
+	</body>
+	</html>`
+	io.WriteString(w, html)
+}
+
+// procces POST root for form: /submit
+func procces(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	email := r.FormValue("email")
+	fmt.Println(email)
+	if email == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
 
-	defer f.Close()
-	// Create a hash
-	h := sha512.New()
-	// copy the file contents to the hash - hashing the file
-	_, err = io.Copy(h, f)
-	if err != nil {
-		log.Fatalln("Could not copy file ", err)
+	// Create cookie
+	c := &http.Cookie{
+		Name:  "myCookie",
+		Value: email,
 	}
 
-	// Print the contents of the hash
-	fmt.Printf("%x\n", h.Sum(nil))
+	// Set the cookie
+	http.SetCookie(w, c)
+	// Redirect to root
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+
 }
