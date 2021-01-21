@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 var (
@@ -27,6 +28,25 @@ func index(w http.ResponseWriter, r *http.Request) {
 		c = &http.Cookie{}
 	}
 
+	isEqual := true
+	// Separate cookie value into HMAC code and email
+	xs := strings.SplitN(c.Value, "|", 2)
+	// Check that we actually have the two parts
+	if len(xs) == 2 {
+		cCode := xs[0]
+		cEmail := xs[1]
+		// Generate a new HMAC token from the received email(cEmail)
+		code := getHMAC(cEmail)
+		// Compare original HMAC code to newly generated HMAC code
+		isEqual = hmac.Equal([]byte(cCode), []byte(code))
+
+	}
+
+	// Create logged in message
+	message := "Not logged in"
+	if isEqual && c.Value != "" {
+		message = "Logged in"
+	}
 	html := `<!DOCTYPE html>
 	<html lang="en">
 	<head>
@@ -36,6 +56,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 	</head>
 	<body>
 		<p>Cookie value: ` + c.Value + `</p>
+		<p>Message:` + message + `</p>
 		<form action="/submit" method="POST">
 			<input type="email" name="email">
 			<input type="submit">
@@ -76,5 +97,6 @@ func procces(w http.ResponseWriter, r *http.Request) {
 func getHMAC(msg string) string {
 	h := hmac.New(sha512.New, key)
 	h.Write([]byte(msg))
-	return string(h.Sum(nil))
+	fmt.Printf("%x\n", h.Sum(nil))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
