@@ -4,19 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Authentication</title>
+    <title>JWT Authentication</title>
     {{/* <link rel="stylesheet" type="text/css" href="/public/stylesheets/main.css"> */}}
 </head>
 <body>
     <div class="container-fluid d-flex w-100 h-100 text-center mx-auto flex-column" >
         <header>
             <div>
-                <h2 class="head">Authentication main page</h2>
+                <h2 class="head">JWT Authentication main page</h2>
             </div>
         </header>
             <div class="card-footer border-0">
-                <p>This page aimes to provide a little light in your authentication darkness. </p>
-                <p>Slice of person passed in as Json {{.}}</p>
+                <p>Cookie value: {{.Cookie}}</p>
+                <p>Message:{{.Message}}</p>
+                
+            </div>
+            <div>
+                <form action="/submit" method="POST">
+                    <input name="email" type="email">
+                    <input type="submit">
+                </form>
             </div>
     </div>    
 </body>
