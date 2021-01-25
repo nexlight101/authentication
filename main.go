@@ -9,9 +9,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Controller struct for template controller
@@ -25,6 +27,12 @@ type MyCustomClaims struct {
 	jwt.StandardClaims
 }
 
+type user struct {
+	email    string
+	password string
+	age      int
+}
+
 var (
 	// TPL pointer to templates
 	tpl *template.Template
@@ -33,6 +41,7 @@ var (
 
 	expire  = time.Now().Add(5 * time.Minute).Unix()
 	message = ""
+	u       = user{}
 )
 
 // NewController provides new controller for template processing
@@ -45,10 +54,12 @@ func main() {
 	tpl = template.Must(template.ParseGlob("templates/*.gohtml"))
 	// Get a template controller value.
 	c := NewController(tpl)
+	// Create user
+
 	http.HandleFunc("/", c.index)
 	http.HandleFunc("/submit", c.procces)
+	http.HandleFunc("/register", c.register)
 	log.Fatal(http.ListenAndServe(":8080", nil))
-
 }
 
 // index displays root page: /
@@ -71,22 +82,12 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 
 		isEqual = true
 	}
-	// // Separate cookie value into HMAC code and email
-	// xs := strings.SplitN(cookie.Value, "|", 2)
-	// // Check that we actually have the two parts
-	// if len(xs) == 2 {
-	// 	cCode := xs[0]
-	// 	cEmail := xs[1]
-	// 	// Generate a new HMAC token from the received email(cEmail)
-	// 	// code := getHMAC(cEmail)
-
-	// 	// Compare original HMAC code to newly generated HMAC code
-	// 	isEqual = hmac.Equal([]byte(cCode), []byte(code))
-
-	// }
-
 	// Create logged in message
 	message = "Not logged in"
+	// Check if someone registered
+	if u.email != "" {
+		message = "Successfully registered and not logged in"
+	}
 	if isEqual && cookie.Value != "" {
 		message = "Logged in"
 	}
@@ -101,6 +102,58 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 	}
 	c.tpl.ExecuteTemplate(w, "index.gohtml", templateData)
 
+}
+
+// register registeres a user -POST:/register
+func (c *Controller) register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	email := r.FormValue("email")
+	fmt.Println(email)
+	if email == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	u.email = email
+	fmt.Println("email provided: ", u.email)
+
+	password := r.FormValue("password")
+	fmt.Println(password)
+	if password == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	passwordH, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not hash: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+
+	u.password = string(passwordH)
+
+	fmt.Println("password hashed provided: ", u.password)
+
+	age := r.FormValue("age")
+	fmt.Println(age)
+	if age != "" {
+		ageCov, err := strconv.Atoi(age)
+		if err != nil {
+			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Please provide a legitimate age: %w", err)))
+			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+			return
+		}
+		u.age = ageCov
+		fmt.Println("age provided: ", u.age)
+
+	}
+
+	// Redirect to root
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // procces POST root for form: /submit

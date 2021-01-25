@@ -4,14 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>JWT Authentication</title>
+    <title>Registration</title>
     {{/* <link rel="stylesheet" type="text/css" href="/public/stylesheets/main.css"> */}}
 </head>
+<style>
+    #input {
+        text-align: left;
+        margin-top: 20px;
+    }
+    button {
+        color: red;
+    }
+</style>
 <body>
     <div class="container-fluid d-flex w-100 h-100 text-center mx-auto flex-column" >
         <header>
             <div>
-                <h2 class="head">JWT Authentication main page</h2>
+                <h2 class="head">Registration main page</h2>
             </div>
         </header>
             <div class="card-footer border-0">
@@ -20,9 +29,22 @@
                 
             </div>
             <div>
-                <form action="/submit" method="POST">
-                    <input name="email" type="email">
-                    <input type="submit">
+                <form action="/register" method="POST">
+                    <div id="input">
+                        <label for="email">email:</label><br>
+                        <input name="email" type="email" id="email" required >
+                    </div>
+                    <div id="input">
+                        <label for="email">password:</label><br>
+                        <input name="password" id="password" type="password" required>
+                    </div>
+                    <div id="input">
+                        <label for="age">age:</label><br>
+                        <input name="age" id="age" type="text">
+                    </div>
+                    <div id="input"><br>
+                        <button type="submit"> Register </button>
+                    </div>
                 </form>
             </div>
     </div>    
