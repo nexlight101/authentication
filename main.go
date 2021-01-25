@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -61,13 +62,12 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 		// Check Valid JWT token
 		jwtToken := cookie.Value
 		fmt.Println(jwtToken)
-		// ************************************************
-		// _, err = parseJWT(jwtToken)
-		// if err != nil {
-		// 	message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not verify JWT token: %w", err)))
-		// 	http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
-		// 	return
-		// }
+		_, err = parseJWT(jwtToken)
+		if err != nil {
+			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not verify JWT token: %w", err)))
+			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+			return
+		}
 
 		isEqual = true
 	}
@@ -180,28 +180,27 @@ func (u MyCustomClaims) Valid() error {
 	return nil
 }
 
-// ************************************************
 // parseJWT Parses a jwt token takes in a signed token as a string and returns a *MyCustomClaims and error
-// func parseJWT(signedToken string) (string, error) {
-// 	// check signature - this is weird!! you don't need an instance just a type of MyCustomClaims
-// 	// this firstly uses the token(in the callback function) and then verifies it in the same step.
-// 	t, err := jwt.ParseWithClaims(signedToken, &MyCustomClaims{}, func(t *jwt.Token) (interface{}, error) {
-// 		// according to jwt advisory you need to check if your signing method remained the same in callback.
-// 		// the signing method are carried inside the unverified token. The Method field of the token type carries Alg() from
-// 		// the SigningMethod used.
-// 		if t.Method.Alg() != jwt.SigningMethodHS512.Alg() {
-// 			return nil, fmt.Errorf("error in parseJWT while parsing token ")
-// 		}
-// 		return key, nil
-// 	})
-// 	// Is the token valid?  It is populated when you Parse/Verify a token - only checks if the claims has not expired
-// 	if err == nil && t.Valid { //there was no error and the token is valid
-// 		// need to assert VerifiedToken of *MyCustomeClaims type!! You know what you passed in when created.
-// 		// Claims type interface with valid method only
-// 		claims := t.Claims.(*MyCustomClaims)
-// 		return claims.SID, nil
-// 	}
-// 	// important to check the error first nill pointer value see running video
-// 	return "", errors.New("error while verifying token")
+func parseJWT(signedToken string) (string, error) {
+	// check signature - this is weird!! you don't need an instance just a type of MyCustomClaims
+	// this firstly uses the token(in the callback function) and then verifies it in the same step.
+	t, err := jwt.ParseWithClaims(signedToken, &MyCustomClaims{}, func(t *jwt.Token) (interface{}, error) {
+		// according to jwt advisory you need to check if your signing method remained the same in callback.
+		// the signing method are carried inside the unverified token. The Method field of the token type carries Alg() from
+		// the SigningMethod used.
+		if t.Method.Alg() != jwt.SigningMethodHS512.Alg() {
+			return nil, fmt.Errorf("error in parseJWT while parsing token ")
+		}
+		return key, nil
+	})
+	// Is the token valid?  It is populated when you Parse/Verify a token - only checks if the claims has not expired
+	if err == nil && t.Valid { //there was no error and the token is valid
+		// need to assert VerifiedToken of *MyCustomeClaims type!! You know what you passed in when you created it.
+		// Claims type interface with valid method only
+		claims := t.Claims.(*MyCustomClaims)
+		return claims.SID, nil
+	}
+	// important to check the error first nill pointer value see running video
+	return "", errors.New("error while verifying token")
 
-// }
+}
