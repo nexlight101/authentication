@@ -167,7 +167,7 @@ func createJWT(SID string) (string, error) {
 	return ss, nil
 }
 
-// Valid overrides the valid function
+// Valid overrides the valid function check that the token is valid
 func (u MyCustomClaims) Valid() error {
 	if !u.VerifyExpiresAt(time.Now().Unix(), true) {
 		fmt.Println("The token expired")
