@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -39,10 +40,11 @@ var (
 
 	key = []byte("I love thursdays when it rains 8723 inches")
 
-	expire  = time.Now().Add(5 * time.Minute).Unix()
-	message = ""
-	u       = user{}
-	cookie  = &http.Cookie{}
+	expire    = time.Now().Add(5 * time.Minute).Unix()
+	message   = ""
+	u         = user{}
+	cookie    = &http.Cookie{}
+	sessionID = "" // sessionID used for HMAC signature
 )
 
 // NewController provides new controller for template processing
@@ -246,12 +248,28 @@ func (c *Controller) procces(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// getHMAC Creates the HMAC takes in a msg as string and returns an HMAC token
-func getHMAC(msg string) string {
+// getHMAC Creates the HMAC signature, takes in a sessionID as string and returns an HMAC token
+func getHMAC(sessionID string) string {
 	h := hmac.New(sha512.New, key)
-	h.Write([]byte(msg))
+	h.Write([]byte(sessionID))
 	fmt.Printf("%x\n", h.Sum(nil))
-	return fmt.Sprintf("%x", h.Sum(nil))
+	return fmt.Sprintf("%x", h.Sum(nil)) + "|" + sessionID
+}
+
+// parseHMAC parses a HMAC (ss) as string and returns a sessionID as a string
+func parseHMAC(ss string) (string, error) {
+	xS := strings.SplitN(ss, "|", 2)
+	if len(xS) < 2 {
+		err := errors.New("Error in parseHMAC while splitting")
+		return "", err
+	}
+	signature := xS[0]
+	sessionID = xS[1]
+	if getHMAC(sessionID) != signature {
+		err := errors.New("Error in parseHMAC while comparing")
+		return "", err
+	}
+	return sessionID, nil
 }
 
 // createJWT Creates the JWT signed token and takes in a SID as string and returns an JWT token(string) and error
