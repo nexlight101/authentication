@@ -42,6 +42,7 @@ var (
 	expire  = time.Now().Add(5 * time.Minute).Unix()
 	message = ""
 	u       = user{}
+	cookie  = &http.Cookie{}
 )
 
 // NewController provides new controller for template processing
@@ -59,6 +60,7 @@ func main() {
 	http.HandleFunc("/", c.index)
 	http.HandleFunc("/submit", c.procces)
 	http.HandleFunc("/register", c.register)
+	http.HandleFunc("/login", c.login)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -70,15 +72,15 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 		cookie = &http.Cookie{}
 	}
 	if cookie.Value != "" {
-		// Check Valid JWT token
-		jwtToken := cookie.Value
-		fmt.Println(jwtToken)
-		_, err = parseJWT(jwtToken)
-		if err != nil {
-			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not verify JWT token: %w", err)))
-			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
-			return
-		}
+		// 	// Check Valid JWT token
+		// 	jwtToken := cookie.Value
+		// 	fmt.Println(jwtToken)
+		// 	_, err = parseJWT(jwtToken)
+		// 	if err != nil {
+		// 		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not verify JWT token: %w", err)))
+		// 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		// 		return
+		// 	}
 
 		isEqual = true
 	}
@@ -89,7 +91,7 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 		message = "Successfully registered and not logged in"
 	}
 	if isEqual && cookie.Value != "" {
-		message = "Logged in"
+		message = "Logged in as " + u.email
 	}
 
 	// populate the template struct with values
@@ -156,6 +158,57 @@ func (c *Controller) register(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// login logs a user in POST: /login
+func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	fmt.Println("Login route activated!")
+	email := r.FormValue("email")
+	if email == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	password := r.FormValue("password")
+	if password == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	// See if someone is registered
+	if email == "" {
+		message = url.QueryEscape("You need to register to login")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+
+	// test if the user email is the correct email
+	if email != u.email {
+		message = url.QueryEscape("You need to register to login")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	fmt.Println("Registration Confirmed!")
+
+	// Compare password
+	if err := bcrypt.CompareHashAndPassword([]byte(u.password), []byte(password)); err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Incorrect email or password: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+
+	// Create cookie
+	cookie = &http.Cookie{
+		Name:  "myCookie",
+		Value: "sessionID",
+	}
+	http.SetCookie(w, cookie)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+
+}
+
 // procces POST root for form: /submit
 func (c *Controller) procces(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -182,7 +235,7 @@ func (c *Controller) procces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create cookie
-	cookie := &http.Cookie{
+	cookie = &http.Cookie{
 		Name:  "myCookie",
 		Value: jwtToken,
 	}

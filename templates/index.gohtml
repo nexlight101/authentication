@@ -20,7 +20,7 @@
     <div class="container-fluid d-flex w-100 h-100 text-center mx-auto flex-column" >
         <header>
             <div>
-                <h2 class="head">Registration main page</h2>
+                <h2 class="head">Main Page</h2>
             </div>
         </header>
             <div class="card-footer border-0">
@@ -28,6 +28,7 @@
                 <p>Message:{{.Message}}</p>
                 
             </div>
+            <p> Register: </p>
             <div>
                 <form action="/register" method="POST">
                     <div id="input">
@@ -44,6 +45,22 @@
                     </div>
                     <div id="input"><br>
                         <button type="submit"> Register </button>
+                    </div>
+                </form>
+            </div>
+            <p> Login: </p>
+            <div>
+                <form action="/login" method="POST">
+                    <div id="input">
+                        <label for="email">email:</label><br>
+                        <input name="email" type="email" id="email" required >
+                    </div>
+                    <div id="input">
+                        <label for="email">password:</label><br>
+                        <input name="password" id="password" type="password" required>
+                    </div>
+                    <div id="input"><br>
+                        <button type="submit"> Login </button>
                     </div>
                 </form>
             </div>
