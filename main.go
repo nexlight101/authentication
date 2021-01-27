@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha512"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	uuid "github.com/gofrs/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -40,11 +42,13 @@ var (
 
 	key = []byte("I love thursdays when it rains 8723 inches")
 
-	expire    = time.Now().Add(5 * time.Minute).Unix()
-	message   = ""
-	u         = user{}
-	cookie    = &http.Cookie{}
-	sessionID = "" // sessionID used for HMAC signature
+	expire  = time.Now().Add(5 * time.Minute).Unix()
+	message = ""
+	u       = user{}
+	cookie  = &http.Cookie{}
+	// sessionID = "" // sessionID used for HMAC signature
+	// Create session map: session key uuid(string) value email string
+	sessions = map[string]string{}
 )
 
 // NewController provides new controller for template processing
@@ -69,6 +73,7 @@ func main() {
 // index displays root page: /
 func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 	var isEqual bool = false
+	// is there a cookie?
 	cookie, err := r.Cookie("myCookie")
 	if err != nil {
 		cookie = &http.Cookie{}
@@ -83,6 +88,18 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 		// 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		// 		return
 		// 	}
+
+		// Get the HMACToken back from cookie value
+		signedToken := cookie.Value
+		// Parse the sessionID from the signed token
+		sID, err := parseHMAC(signedToken)
+		if err != nil {
+			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not retrieve sessionID: %w", err)))
+			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+			return
+		}
+
+		u.email = sessions[sID]
 
 		isEqual = true
 	}
@@ -156,6 +173,17 @@ func (c *Controller) register(w http.ResponseWriter, r *http.Request) {
 
 	}
 
+	// //generate uuid
+	// sID, err := uuid.NewV4()
+	// if err != nil {
+	// 	message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
+	// 	http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+	// 	return
+	// }
+
+	// // Create session
+	// sessions[sID.String()] = u.email
+
 	// Redirect to root
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -201,12 +229,25 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//generate uuid
+	sID, err := uuid.NewV4()
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+
+	// Create session
+	sessions[sID.String()] = u.email
+	// Create HMAC hash from sessionID
+	HMACID := getHMAC(sID.String())
 	// Create cookie
 	cookie = &http.Cookie{
 		Name:  "myCookie",
-		Value: "sessionID",
+		Value: HMACID,
 	}
 	http.SetCookie(w, cookie)
+
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 
 }
@@ -256,7 +297,7 @@ func getHMAC(sessionID string) string {
 	return fmt.Sprintf("%x", h.Sum(nil)) + "|" + sessionID
 }
 
-// parseHMAC parses a HMAC (ss) as string and returns a sessionID as a string
+// parseHMAC parses a HMAC (ss) as string and returns a sID as a string
 func parseHMAC(ss string) (string, error) {
 	xS := strings.SplitN(ss, "|", 2)
 	if len(xS) < 2 {
@@ -264,12 +305,30 @@ func parseHMAC(ss string) (string, error) {
 		return "", err
 	}
 	signature := xS[0]
-	sessionID = xS[1]
-	if getHMAC(sessionID) != signature {
+	sID := xS[1]
+	// check if this is a sessionID
+	if _, ok := sessions[sID]; !ok {
+		err := errors.New("Error in parseHMAC while verifying session")
+		return "", err
+	}
+	// Create HMAC from sessionID to verify against
+	h := hmac.New(sha512.New, key) // create hasher
+	h.Write([]byte(sID))           // sign the sessionid
+	newSig := h.Sum(nil)           // store the hash as byte slice
+	// decode signature from hex - it was stores as a hex string - to byte slice
+	oldSig, err := hex.DecodeString(signature)
+	if err != nil {
+		err = errors.New("Error in parseHMAC while decoding")
+		return "", err
+	}
+	// Compare the new signature to the old one
+	if !hmac.Equal(oldSig, newSig) {
+		fmt.Printf("passed in signature: %v\n newly generated signature: %v\n", oldSig, newSig)
+		fmt.Println()
 		err := errors.New("Error in parseHMAC while comparing")
 		return "", err
 	}
-	return sessionID, nil
+	return sID, nil
 }
 
 // createJWT Creates the JWT signed token and takes in a SID as string and returns an JWT token(string) and error
