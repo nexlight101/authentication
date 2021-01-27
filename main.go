@@ -33,6 +33,7 @@ type MyCustomClaims struct {
 type user struct {
 	email    string
 	password string
+	first    string
 	age      int
 }
 
@@ -135,17 +136,26 @@ func (c *Controller) register(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	fmt.Println(email)
 	if email == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		message = url.QueryEscape("You need to supply an email")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
 
 	u.email = email
 	fmt.Println("email provided: ", u.email)
 
+	u.first = r.FormValue("first")
+	if u.first == "" {
+		message = url.QueryEscape("You need to supply a first name")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+
 	password := r.FormValue("password")
 	fmt.Println(password)
 	if password == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		message = url.QueryEscape("Invalid password")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
 	passwordH, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
