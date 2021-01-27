@@ -93,7 +93,7 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 		// Get the HMACToken back from cookie value
 		signedToken := cookie.Value
 		// Parse the sessionID from the signed token
-		sID, err := parseHMAC(signedToken)
+		sID, err := parseJWT(signedToken)
 		if err != nil {
 			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not retrieve sessionID: %w", err)))
 			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
@@ -250,11 +250,17 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 	// Create session
 	sessions[sID.String()] = u.email
 	// Create HMAC hash from sessionID
-	HMACID := getHMAC(sID.String())
+	JWTToken, err := createJWT(sID.String())
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	// HMACID := getHMAC(sID.String())
 	// Create cookie
 	cookie = &http.Cookie{
 		Name:  "myCookie",
-		Value: HMACID,
+		Value: JWTToken,
 	}
 	http.SetCookie(w, cookie)
 
@@ -304,6 +310,7 @@ func getHMAC(sessionID string) string {
 	h := hmac.New(sha512.New, key)
 	h.Write([]byte(sessionID))
 	fmt.Printf("%x\n", h.Sum(nil))
+	// return signature and sessionID with separator
 	return fmt.Sprintf("%x", h.Sum(nil)) + "|" + sessionID
 }
 
