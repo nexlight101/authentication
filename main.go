@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -29,10 +29,14 @@ type user struct {
 	age      int
 }
 
-// githubConfig for github response
-type githubConfig struct {
-	// Data map[map[]] `json:"data"`
-
+// JSON LAYOUT{"data":{"viewer":{"id":"..."}}}
+// githubResponse for github response {"query": "query {viewer {id}}"}
+type githubResponse struct {
+	Data struct {
+		Viewer struct {
+			ID string `json:"id"`
+		} `json:"viewer"`
+	} `json:"data"`
 }
 
 var (
@@ -54,6 +58,10 @@ var (
 		ClientSecret: "132699ece246b9a77f3e2f5df9242160d9115936",
 		Endpoint:     github.Endpoint,
 	}
+	// githubID
+	githubID string
+	// oauth2Connections Key is Oauth2 provider id and value is user ID
+	oauth2Connections map[string]string
 )
 
 // NewController provides new controller for template processing
@@ -108,7 +116,7 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 	ts := githubOauthConfig.TokenSource(r.Context(), token)
 	client := oauth2.NewClient(r.Context(), ts)
 	// Create a reader from a string using strings package
-	// {"data":{"viewer":{"id":"MDQ6VXNlcjQzODEzMzg0"}}}
+
 	requestBody := strings.NewReader(`{"query": "query {viewer {id}}"}`)
 	// POST to the github graphql route
 	resp, err := client.Post("https://api.github.com/graphql", "application/json", requestBody)
@@ -117,13 +125,23 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer resp.Body.Close()
-
-	bs, err := ioutil.ReadAll(resp.Body)
+	// decode github response
+	var gr githubResponse
+	err = json.NewDecoder(resp.Body).Decode(&gr)
 	if err != nil {
-		http.Error(w, "Couldn't read github information", http.StatusInternalServerError)
+		http.Error(w, "Github invalid response", http.StatusInternalServerError)
 		return
 	}
-	log.Println(string(bs))
+	githubID = gr.Data.Viewer.ID
+	userID, ok := oauth2Connections[githubID]
+	if !ok {
+		// new user - create account
+		// Jipo the email address to bypass registration temperary
+		u.email = "piettie@uk.gov"
+		oauth2Connections[githubID] = u.email
+	}
+	fmt.Println("User ID from github ", userID)
+	login(w, r)
 }
 
 // ***************************** End Oauth2 routes ***************************
@@ -309,15 +327,8 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//generate uuid
-	sID, err := uuid.NewV4()
-	if err != nil {
-		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
-		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
-		return
-	}
 	// Log the user in
-	login(w, r, sID.String())
+	login(w, r)
 	// // Create session
 	// sessions[sID.String()] = u.email
 	// // Create HMAC hash from sessionID
@@ -378,11 +389,18 @@ func (c *Controller) procces(w http.ResponseWriter, r *http.Request) {
 
 // ****************************** login ******************************
 // login logs a user in
-func login(w http.ResponseWriter, r *http.Request, sID string) {
+func login(w http.ResponseWriter, r *http.Request) {
+	//generate uuid
+	sID, err := uuid.NewV4()
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
 	// Create session
-	sessions[sID] = u.email
+	sessions[sID.String()] = u.email
 	// Create HMAC hash from sessionID
-	JWTToken, err := createJWT(sID)
+	JWTToken, err := createJWT(sID.String())
 	if err != nil {
 		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
@@ -393,6 +411,7 @@ func login(w http.ResponseWriter, r *http.Request, sID string) {
 	cookie = &http.Cookie{
 		Name:  "myCookie",
 		Value: JWTToken,
+		Path:  "/",
 	}
 	http.SetCookie(w, cookie)
 }
