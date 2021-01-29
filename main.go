@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	uuid "github.com/gofrs/uuid"
@@ -25,6 +27,12 @@ type user struct {
 	password string
 	first    string
 	age      int
+}
+
+// githubConfig for github response
+type githubConfig struct {
+	// Data map[map[]] `json:"data"`
+
 }
 
 var (
@@ -99,7 +107,23 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 	// Get token source
 	ts := githubOauthConfig.TokenSource(r.Context(), token)
 	client := oauth2.NewClient(r.Context(), ts)
+	// Create a reader from a string using strings package
+	// {"data":{"viewer":{"id":"MDQ6VXNlcjQzODEzMzg0"}}}
+	requestBody := strings.NewReader(`{"query": "query {viewer {id}}"}`)
+	// POST to the github graphql route
+	resp, err := client.Post("https://api.github.com/graphql", "application/json", requestBody)
+	if err != nil {
+		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
 
+	bs, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Couldn't read github information", http.StatusInternalServerError)
+		return
+	}
+	log.Println(string(bs))
 }
 
 // ***************************** End Oauth2 routes ***************************
@@ -292,23 +316,24 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
-
-	// Create session
-	sessions[sID.String()] = u.email
-	// Create HMAC hash from sessionID
-	JWTToken, err := createJWT(sID.String())
-	if err != nil {
-		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
-		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
-		return
-	}
-	// HMACID := getHMAC(sID.String())
-	// Create cookie
-	cookie = &http.Cookie{
-		Name:  "myCookie",
-		Value: JWTToken,
-	}
-	http.SetCookie(w, cookie)
+	// Log the user in
+	login(w, r, sID.String())
+	// // Create session
+	// sessions[sID.String()] = u.email
+	// // Create HMAC hash from sessionID
+	// JWTToken, err := createJWT(sID.String())
+	// if err != nil {
+	// 	message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
+	// 	http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+	// 	return
+	// }
+	// // HMACID := getHMAC(sID.String())
+	// // Create cookie
+	// cookie = &http.Cookie{
+	// 	Name:  "myCookie",
+	// 	Value: JWTToken,
+	// }
+	// http.SetCookie(w, cookie)
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 
@@ -350,3 +375,26 @@ func (c *Controller) procces(w http.ResponseWriter, r *http.Request) {
 	// Redirect to root
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+
+// ****************************** login ******************************
+// login logs a user in
+func login(w http.ResponseWriter, r *http.Request, sID string) {
+	// Create session
+	sessions[sID] = u.email
+	// Create HMAC hash from sessionID
+	JWTToken, err := createJWT(sID)
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	// HMACID := getHMAC(sID.String())
+	// Create cookie
+	cookie = &http.Cookie{
+		Name:  "myCookie",
+		Value: JWTToken,
+	}
+	http.SetCookie(w, cookie)
+}
+
+// ****************************** End login ******************************
