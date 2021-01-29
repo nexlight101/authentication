@@ -11,6 +11,8 @@ import (
 
 	uuid "github.com/gofrs/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/github"
 )
 
 // Controller struct for template controller
@@ -38,6 +40,12 @@ var (
 	// sessionID = "" // sessionID used for HMAC signature
 	// Create session map: session key sessionID(consists of an uuid(string)) value email string
 	sessions = map[string]string{}
+	// Create github oauth2 config
+	githubOauthConfig = &oauth2.Config{
+		ClientID:     "9bed2901acec3e73faa2",
+		ClientSecret: "132699ece246b9a77f3e2f5df9242160d9115936",
+		Endpoint:     github.Endpoint,
+	}
 )
 
 // NewController provides new controller for template processing
@@ -64,9 +72,10 @@ func main() {
 }
 
 // ***************************** Oauth2 routes ***************************
-// startGithubOauth handle the Github route
+// startGithubOauth handle the Github route. To origanize the github login page
 func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
-
+	redirectURL := githubOauthConfig.AuthCodeURL("0000") // The state("0000") will be a unique identifier per login attempt
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 // ***************************** End Oauth2 routes ***************************
