@@ -57,8 +57,19 @@ func main() {
 	http.HandleFunc("/register", c.register)
 	http.HandleFunc("/login", c.login)
 	http.HandleFunc("/logout", c.logout)
+
+	// Handle Oauth routes
+	http.HandleFunc("/oauth2/github", c.startGithubOauth)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
+
+// ***************************** Oauth2 routes ***************************
+// startGithubOauth handle the Github route
+func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
+
+}
+
+// ***************************** End Oauth2 routes ***************************
 
 // index displays root page: /
 func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
@@ -69,16 +80,6 @@ func (c *Controller) index(w http.ResponseWriter, r *http.Request) {
 		cookie = &http.Cookie{}
 	}
 	if cookie.Value != "" {
-		// 	// Check Valid JWT token
-		// 	jwtToken := cookie.Value
-		// 	fmt.Println(jwtToken)
-		// 	_, err = parseJWT(jwtToken)
-		// 	if err != nil {
-		// 		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not verify JWT token: %w", err)))
-		// 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
-		// 		return
-		// 	}
-
 		// Get the JWTToken back from cookie value
 		signedToken := cookie.Value
 		// Parse the sessionID from the signed token
