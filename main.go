@@ -68,6 +68,8 @@ func main() {
 
 	// Handle Oauth routes
 	http.HandleFunc("/oauth2/github", c.startGithubOauth)
+	http.HandleFunc("/oauth2/github/receive", c.completeGithubOauth)
+
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -76,6 +78,28 @@ func main() {
 func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
 	redirectURL := githubOauthConfig.AuthCodeURL("0000") // The state("0000") will be a unique identifier per login attempt
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
+// completeGithubOauth handle the Github route. To origanize the github login page
+func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request) {
+	code := r.FormValue("code")
+	state := r.FormValue("state")
+
+	if state != "0000" {
+		http.Error(w, "State is incorrect", http.StatusBadRequest)
+		return
+	}
+	// Retrieve a token
+	token, err := githubOauthConfig.Exchange(r.Context(), code)
+	if err != nil {
+		http.Error(w, "Couldn't login", http.StatusInternalServerError)
+		return
+	}
+
+	// Get token source
+	ts := githubOauthConfig.TokenSource(r.Context(), token)
+	client := oauth2.NewClient(r.Context(), ts)
+
 }
 
 // ***************************** End Oauth2 routes ***************************
