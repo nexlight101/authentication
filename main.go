@@ -14,6 +14,7 @@ import (
 	uuid "github.com/gofrs/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/amazon"
 	"golang.org/x/oauth2/github"
 )
 
@@ -39,6 +40,20 @@ type githubResponse struct {
 	} `json:"data"`
 }
 
+// {
+//     "user_id" : "amzn1.account.K2LI23KL2LK2"
+//     "email" : "johndoe@gmail.com",
+//     "name" : "John Doe",
+//     "postal_code": "98101",
+// }
+// amazonResponse for amazon response
+type amazonResponse struct {
+	UserID     string `json:"user_id"`
+	Emial      string `json:"email"`
+	Name       string `json:"name"`
+	PostalCode string `json:"postal_code"`
+}
+
 var (
 	// TPL pointer to templates
 	tpl *template.Template
@@ -58,10 +73,19 @@ var (
 		ClientSecret: "132699ece246b9a77f3e2f5df9242160d9115936",
 		Endpoint:     github.Endpoint,
 	}
+	// Create amazon oauth2 config
+	amazonOauthConfig = &oauth2.Config{
+		ClientID:     "amzn1.application-oa2-client.37d1e287b52748609d4900773e238c93",
+		ClientSecret: "686dcb70ceb1f941cf6bac17b11c1104de605e8ffc7bf6b8117fc6781339c4f0",
+		Endpoint:     amazon.Endpoint,
+	}
+
 	// githubID
 	githubID string
+	// amazonID
+	amazonID string
 	// oauth2Connections Key is Oauth2 provider id and value is user ID
-	oauth2Connections map[string]string
+	oauth2Connections = map[string]string{}
 )
 
 // NewController provides new controller for template processing
@@ -85,6 +109,7 @@ func main() {
 	// Handle Oauth routes
 	http.HandleFunc("/oauth2/github", c.startGithubOauth)
 	http.HandleFunc("/oauth2/github/receive", c.completeGithubOauth)
+	http.HandleFunc("/oauth2/amazon/receive", c.completeAmazonOauth)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -96,11 +121,11 @@ func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
-// completeGithubOauth handle the Github route. To origanize the github login page
+// completeGithubOauth handle the Github route. To origanize the github login page:/oauth2/github/receive
 func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("code")
 	state := r.FormValue("state")
-
+	fmt.Println("/oauth2/github/receive activated!")
 	if state != "0000" {
 		http.Error(w, "State is incorrect", http.StatusBadRequest)
 		return
@@ -133,15 +158,73 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	githubID = gr.Data.Viewer.ID
-	userID, ok := oauth2Connections[githubID]
-	if !ok {
+	fmt.Printf("GithubID: %v \n", githubID)
+	_, ok := oauth2Connections[githubID]
+	if !ok { // New user register him
 		// new user - create account
 		// Jipo the email address to bypass registration temperary
 		u.email = "piettie@uk.gov"
 		oauth2Connections[githubID] = u.email
 	}
-	fmt.Println("User ID from github ", userID)
 	login(w, r)
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// startAmazonOauth handle the Amazon route. To origanize the amazon login page
+func (c *Controller) startAmazonOauth(w http.ResponseWriter, r *http.Request) {
+	redirectURL := amazonOauthConfig.AuthCodeURL("0000") // The state("0000") will be a unique identifier per login attempt
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
+// completeAmazonOauth handle the Amazon route. To origanize the Amazon login page:/oauth2/amazon/receive
+func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request) {
+	code := r.FormValue("code")
+	state := r.FormValue("state")
+	fmt.Println("/oauth2/amazon/receive activated!")
+	if state != "0000" {
+		http.Error(w, "State is incorrect", http.StatusBadRequest)
+		return
+	}
+	// Retrieve a token
+	token, err := amazonOauthConfig.Exchange(r.Context(), code)
+	if err != nil {
+		http.Error(w, "Couldn't login", http.StatusInternalServerError)
+		return
+	}
+
+	// Get token source
+	ts := githubOauthConfig.TokenSource(r.Context(), token)
+	client := oauth2.NewClient(r.Context(), ts)
+	// Create a reader from a string using strings package
+
+	requestBody := strings.NewReader(`{"query": "query {viewer {id}}"}`)
+	// POST to the github graphql route
+	resp, err := client.Post("https://api.github.com/graphql", "application/json", requestBody)
+	if err != nil {
+		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+	// decode amazon response
+	var gr amazonResponse
+	err = json.NewDecoder(resp.Body).Decode(&gr)
+	if err != nil {
+		http.Error(w, "Amazon invalid response", http.StatusInternalServerError)
+		return
+	}
+	amazonID = gr.UserID
+	fmt.Printf("amazonID: %v \n", amazonID)
+	_, ok := oauth2Connections[amazonID]
+	if !ok { // New user register him
+		// new user - create account
+		// Jipo the email address to bypass registration temperary
+		u.email = "piettie@uk.gov"
+		oauth2Connections[amazonID] = u.email
+	}
+	login(w, r)
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // ***************************** End Oauth2 routes ***************************
