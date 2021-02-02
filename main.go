@@ -78,6 +78,8 @@ var (
 		ClientID:     "amzn1.application-oa2-client.37d1e287b52748609d4900773e238c93",
 		ClientSecret: "686dcb70ceb1f941cf6bac17b11c1104de605e8ffc7bf6b8117fc6781339c4f0",
 		Endpoint:     amazon.Endpoint,
+		RedirectURL:  "http://localhost:8080/oauth2/amazon/receive", // On live site use only https
+		Scopes:       []string{"profile"},
 	}
 
 	// githubID
@@ -86,6 +88,9 @@ var (
 	amazonID string
 	// oauth2Connections Key is Oauth2 provider id and value is user ID
 	oauth2Connections = map[string]string{}
+	// stateConnections to cater for names and timeouts for Oauth connections
+	// key state:string value expiration time: time.Time
+	stateConnections = map[string]time.Time{}
 )
 
 // NewController provides new controller for template processing
@@ -107,8 +112,9 @@ func main() {
 	http.HandleFunc("/logout", c.logout)
 
 	// Handle Oauth routes
-	http.HandleFunc("/oauth2/github", c.startGithubOauth)
+	http.HandleFunc("/oauth2/github/login", c.startGithubOauth)
 	http.HandleFunc("/oauth2/github/receive", c.completeGithubOauth)
+	http.HandleFunc("/oauth2/amazon/login", c.startAmazonOauth)
 	http.HandleFunc("/oauth2/amazon/receive", c.completeAmazonOauth)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -117,7 +123,15 @@ func main() {
 // ***************************** Oauth2 routes ***************************
 // startGithubOauth handle the Github route. To origanize the github login page
 func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
-	redirectURL := githubOauthConfig.AuthCodeURL("0000") // The state("0000") will be a unique identifier per login attempt
+	//generate uuid
+	state, err := uuid.NewV4()
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create state: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	stateConnections[state.String()] = time.Now().Add(60 * time.Minute)
+	redirectURL := githubOauthConfig.AuthCodeURL(state.String()) // The state("0000") will be a unique identifier per login attempt
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
@@ -126,8 +140,16 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 	fmt.Println("/oauth2/github/receive activated!")
-	if state != "0000" {
-		http.Error(w, "State is incorrect", http.StatusBadRequest)
+	expireTime, ok := stateConnections[state]
+	if !ok {
+		message = url.QueryEscape("Could not find state")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	// Check if state has not expired
+	if expireTime.Before(time.Now()) {
+		message = url.QueryEscape("State expired")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
 	// Retrieve a token
@@ -159,7 +181,7 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 	}
 	githubID = gr.Data.Viewer.ID
 	fmt.Printf("GithubID: %v \n", githubID)
-	_, ok := oauth2Connections[githubID]
+	_, ok = oauth2Connections[githubID]
 	if !ok { // New user register him
 		// new user - create account
 		// Jipo the email address to bypass registration temperary
@@ -173,7 +195,17 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 
 // startAmazonOauth handle the Amazon route. To origanize the amazon login page
 func (c *Controller) startAmazonOauth(w http.ResponseWriter, r *http.Request) {
-	redirectURL := amazonOauthConfig.AuthCodeURL("0000") // The state("0000") will be a unique identifier per login attempt
+	//generate uuid to make state name unique
+	state, err := uuid.NewV4()
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create state: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	// Assign an expiry time(1 hour) to the state
+	stateConnections[state.String()] = time.Now().Add(60 * time.Minute)
+	redirectURL := amazonOauthConfig.AuthCodeURL(state.String()) // The state("0000") will be a unique identifier per login attempt
+	// Now redirect to amazon to start the Oauth procces
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
@@ -182,8 +214,16 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 	code := r.FormValue("code")
 	state := r.FormValue("state")
 	fmt.Println("/oauth2/amazon/receive activated!")
-	if state != "0000" {
-		http.Error(w, "State is incorrect", http.StatusBadRequest)
+	expireTime, ok := stateConnections[state]
+	if !ok {
+		message = url.QueryEscape("Could not find state")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	// Check if state has not expired
+	if expireTime.Before(time.Now()) {
+		message = url.QueryEscape("State expired")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
 	// Retrieve a token
@@ -215,7 +255,7 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 	}
 	amazonID = gr.UserID
 	fmt.Printf("amazonID: %v \n", amazonID)
-	_, ok := oauth2Connections[amazonID]
+	_, ok = oauth2Connections[amazonID]
 	if !ok { // New user register him
 		// new user - create account
 		// Jipo the email address to bypass registration temperary
