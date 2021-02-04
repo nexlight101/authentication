@@ -54,6 +54,11 @@ type amazonResponse struct {
 	PostalCode string `json:"postal_code"`
 }
 
+const (
+	amazonURL string = "https://api.amazon.com/user/profile"
+	graphql   string = "https://api.github.com/graphql"
+)
+
 var (
 	// TPL pointer to templates
 	tpl *template.Template
@@ -123,6 +128,11 @@ func main() {
 // ***************************** Oauth2 routes ***************************
 // startGithubOauth handle the Github route. To origanize the github login page
 func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
+	// Check if method is POST
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	//generate uuid
 	state, err := uuid.NewV4()
 	if err != nil {
@@ -166,7 +176,7 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 
 	requestBody := strings.NewReader(`{"query": "query {viewer {id}}"}`)
 	// POST to the github graphql route
-	resp, err := client.Post("https://api.github.com/graphql", "application/json", requestBody)
+	resp, err := client.Post(graphql, "application/json", requestBody)
 	if err != nil {
 		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
 		return
@@ -193,8 +203,13 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// startAmazonOauth handle the Amazon route. To origanize the amazon login page
+// startAmazonOauth handle the Amazon route. To origanize the amazon login page:/oauth2/amazon/login
 func (c *Controller) startAmazonOauth(w http.ResponseWriter, r *http.Request) {
+	// Check if method is POST
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	//generate uuid to make state name unique
 	state, err := uuid.NewV4()
 	if err != nil {
@@ -204,16 +219,21 @@ func (c *Controller) startAmazonOauth(w http.ResponseWriter, r *http.Request) {
 	}
 	// Assign an expiry time(1 hour) to the state
 	stateConnections[state.String()] = time.Now().Add(60 * time.Minute)
-	redirectURL := amazonOauthConfig.AuthCodeURL(state.String()) // The state("0000") will be a unique identifier per login attempt
+	redirectURL := amazonOauthConfig.AuthCodeURL(state.String())
 	// Now redirect to amazon to start the Oauth procces
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 // completeAmazonOauth handle the Amazon route. To origanize the Amazon login page:/oauth2/amazon/receive
 func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("/oauth2/amazon/receive activated!")
 	code := r.FormValue("code")
 	state := r.FormValue("state")
-	fmt.Println("/oauth2/amazon/receive activated!")
+	if code == "" || state == "" {
+		message = url.QueryEscape("Invalid response from Amazon")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
 	expireTime, ok := stateConnections[state]
 	if !ok {
 		message = url.QueryEscape("Could not find state")
@@ -226,26 +246,31 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
-	// Retrieve a token
+	// Retrieve a token by exchanging our code for a token
 	token, err := amazonOauthConfig.Exchange(r.Context(), code)
 	if err != nil {
 		http.Error(w, "Couldn't login", http.StatusInternalServerError)
 		return
 	}
 
-	// Get token source
-	ts := githubOauthConfig.TokenSource(r.Context(), token)
+	// Get token source this includes the shortterm token and refreshed token
+	// token sourse will automatically refresh your token to be current
+	ts := amazonOauthConfig.TokenSource(r.Context(), token)
 	client := oauth2.NewClient(r.Context(), ts)
-	// Create a reader from a string using strings package
-
-	requestBody := strings.NewReader(`{"query": "query {viewer {id}}"}`)
-	// POST to the github graphql route
-	resp, err := client.Post("https://api.github.com/graphql", "application/json", requestBody)
+	// // Create a reader from a string using strings package
+	resp, err := client.Get(amazonURL)
 	if err != nil {
 		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
+	// Check for invalid status codes
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		message = url.QueryEscape("Bad status on amazon GET")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	fmt.Printf("Json response from amazon: %v\n", resp.Body)
 	// decode amazon response
 	var gr amazonResponse
 	err = json.NewDecoder(resp.Body).Decode(&gr)
@@ -263,7 +288,7 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 		oauth2Connections[amazonID] = u.email
 	}
 	login(w, r)
-
+	fmt.Printf("Amazon userID: %s \nAmazon Email: %v \n", gr.UserID, gr.Emial)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
