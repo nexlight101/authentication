@@ -1,0 +1,51 @@
+    <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>OAuth2 Registration</title>
+    {{/* <link rel="stylesheet" type="text/css" href="/public/stylesheets/main.css"> */}}
+</head>
+<style>
+    #input {
+        text-align: left;
+        margin-top: 20px;
+    }
+    button {
+        color: red;
+    }
+</style>
+<body>
+    <div class="container-fluid d-flex w-100 h-100 text-center mx-auto flex-column" >
+        <header>
+            <div>
+                <h2 class="head">Registration Page</h2>
+            </div>
+        </header>
+            <div class="card-footer border-0">
+                <p>Cookie value: {{.Cookie}}</p>
+                <p>Message:{{.Message}}</p>
+            </div>
+        <p> Oauth2 Register: </p>
+        <div>
+            <form action="/oauth2/register" method="POST">
+                <div id="input">
+                    <label for="email">email:</label><br>
+                    <input name="email" type="email" id="email" required >
+                </div>
+                <div id="input">
+                    <label for="first">First Name:</label><br>
+                    <input name="first" type="text" id="first" placeholder="First Name" required>
+                </div>
+                <div id="input">
+                    <label for="age">age:</label><br>
+                    <input name="age" id="age" type="text">
+                </div>
+                <div id="input"><br>
+                    <button type="submit"> Register </button>
+                </div>
+            </form>
+        </div>           
+    </div>    
+</body>

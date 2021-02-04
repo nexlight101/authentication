@@ -395,18 +395,6 @@ func (c *Controller) register(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("age provided: ", u.age)
 
 	}
-
-	// //generate uuid
-	// sID, err := uuid.NewV4()
-	// if err != nil {
-	// 	message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
-	// 	http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
-	// 	return
-	// }
-
-	// // Create session
-	// sessions[sID.String()] = u.email
-
 	// Redirect to root
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
