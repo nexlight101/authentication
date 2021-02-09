@@ -24,10 +24,12 @@ type Controller struct {
 }
 
 type user struct {
-	email    string
+	email    string // Use email as userID
 	password string
 	first    string
 	age      int
+	provider string
+	oauthID  string // If oauth then store ID
 }
 
 // JSON LAYOUT{"data":{"viewer":{"id":"..."}}}
@@ -49,7 +51,7 @@ type githubResponse struct {
 // amazonResponse for amazon response
 type amazonResponse struct {
 	UserID     string `json:"user_id"`
-	Emial      string `json:"email"`
+	Email      string `json:"email"`
 	Name       string `json:"name"`
 	PostalCode string `json:"postal_code"`
 }
@@ -86,12 +88,18 @@ var (
 		RedirectURL:  "http://localhost:8080/oauth2/amazon/receive", // On live site use only https
 		Scopes:       []string{"profile"},
 	}
+	// decode amazon response
+	aR = amazonResponse{}
+	// decode github response
+	gR = githubResponse{}
 
 	// githubID
 	githubID string
 	// amazonID
 	amazonID string
-	// oauth2Connections Key is Oauth2 provider id and value is user ID
+	// sToken signed version of oauth provider ID
+	sToken string
+	// oauth2Connections Holds the known oauth2 users, key is Oauth2 provider id and value is user ID
 	oauth2Connections = map[string]string{}
 	// stateConnections to cater for names and timeouts for Oauth connections
 	// key state:string value expiration time: time.Time
@@ -117,16 +125,76 @@ func main() {
 	http.HandleFunc("/logout", c.logout)
 
 	// Handle Oauth routes
-	http.HandleFunc("/oauth2/github/login", c.startGithubOauth)
-	http.HandleFunc("/oauth2/github/receive", c.completeGithubOauth)
-	http.HandleFunc("/oauth2/amazon/login", c.startAmazonOauth)
-	http.HandleFunc("/oauth2/amazon/receive", c.completeAmazonOauth)
+	http.HandleFunc("/oauth2/github/login", c.startGithubOauth)      // Log with github
+	http.HandleFunc("/oauth2/github/receive", c.completeGithubOauth) // GET the github response back
+	http.HandleFunc("/oauth2/amazon/login", c.startAmazonOauth)      // Log with amazon
+	http.HandleFunc("/oauth2/amazon/receive", c.completeAmazonOauth) // GET the amazon response back
+	http.HandleFunc("/partial-register", c.oauth2PartialRegister)    // GET route to display registration form
+	http.HandleFunc("/oauth2/register", c.oauth2Register)            // POST route to read registration form
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 // ***************************** Oauth2 routes ***************************
-// startGithubOauth handle the Github route. To origanize the github login page
+// oauth2PartialRegister GET route: handles the registration of an oauth user:/partial-register
+func (c *Controller) oauth2PartialRegister(w http.ResponseWriter, r *http.Request) {
+	// populate the template struct with values
+	templateData := struct {
+		ID       string
+		Name     string
+		Email    string
+		Provider string
+	}{
+		ID:       sToken,
+		Name:     aR.Name,
+		Email:    aR.Email,
+		Provider: u.provider,
+	}
+	c.tpl.ExecuteTemplate(w, "oauthRegister.gohtml", templateData)
+}
+
+// oauth2Register POST route      : handles the registration of an oauth user:/ouath2/register
+func (c *Controller) oauth2Register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	fmt.Println("Oauth2 register route has started")
+	u.email = r.FormValue("email")
+	fmt.Println(u.email)
+	if u.email == "" {
+		message = url.QueryEscape("You need to supply an email")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	fmt.Println("email provided: ", u.email)
+	u.first = r.FormValue("first")
+	if u.first == "" {
+		message = url.QueryEscape("You need to supply a first name")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	age := r.FormValue("age")
+	fmt.Println(age)
+	if age != "" {
+		ageCov, err := strconv.Atoi(age)
+		if err != nil {
+			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Please provide a legitimate age: %w", err)))
+			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+			return
+		}
+		u.age = ageCov
+		fmt.Println("age provided: ", u.age)
+
+	}
+	// Retrieve the hidden ID
+	u.oauthID = r.FormValue("id")
+	login(w, r)
+	fmt.Printf("Amazon userID: %s \nAmazon Email: %v \n", aR.UserID, aR.Email)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// startGithubOauth handles the Github route. To origanize the github login page
 func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
 	// Check if method is POST
 	if r.Method != http.MethodPost {
@@ -182,14 +250,12 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer resp.Body.Close()
-	// decode github response
-	var gr githubResponse
-	err = json.NewDecoder(resp.Body).Decode(&gr)
+	err = json.NewDecoder(resp.Body).Decode(&gR)
 	if err != nil {
 		http.Error(w, "Github invalid response", http.StatusInternalServerError)
 		return
 	}
-	githubID = gr.Data.Viewer.ID
+	githubID = gR.Data.Viewer.ID
 	fmt.Printf("GithubID: %v \n", githubID)
 	_, ok = oauth2Connections[githubID]
 	if !ok { // New user register him
@@ -257,7 +323,7 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 	// token sourse will automatically refresh your token to be current
 	ts := amazonOauthConfig.TokenSource(r.Context(), token)
 	client := oauth2.NewClient(r.Context(), ts)
-	// // Create a reader from a string using strings package
+	// Query Amazon to get client information
 	resp, err := client.Get(amazonURL)
 	if err != nil {
 		http.Error(w, "Couldn't get user", http.StatusInternalServerError)
@@ -271,24 +337,37 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	fmt.Printf("Json response from amazon: %v\n", resp.Body)
-	// decode amazon response
-	var gr amazonResponse
-	err = json.NewDecoder(resp.Body).Decode(&gr)
+
+	err = json.NewDecoder(resp.Body).Decode(&aR)
 	if err != nil {
 		http.Error(w, "Amazon invalid response", http.StatusInternalServerError)
 		return
 	}
-	amazonID = gr.UserID
+	amazonID = aR.UserID
 	fmt.Printf("amazonID: %v \n", amazonID)
-	_, ok = oauth2Connections[amazonID]
+	// Store the Amazon ID with the email(userID) in the oauthconnectiongs map
+	u.email, ok = oauth2Connections[amazonID]
 	if !ok { // New user register him
 		// new user - create account
-		// Jipo the email address to bypass registration temperary
-		u.email = "piettie@uk.gov"
-		oauth2Connections[amazonID] = u.email
+		// Sign the amazon's userID
+		sToken, err := createJWT(amazonID)
+		if err != nil {
+			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not sign provider ID: %w", err)))
+			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+			return
+		}
+		// Populate the oauth connections map with the signed token as user ID.
+		oauth2Connections[sToken] = u.email
+		// Populate the provider field in user struct
+		u.provider = "Amazon"
+
+		// Register the new user
+		http.Redirect(w, r, "/partial-register", http.StatusSeeOther)
+		return
+
 	}
 	login(w, r)
-	fmt.Printf("Amazon userID: %s \nAmazon Email: %v \n", gr.UserID, gr.Emial)
+	fmt.Printf("Amazon userID: %s \nAmazon Email: %v \n", aR.UserID, aR.Email)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -465,23 +544,6 @@ func (c *Controller) login(w http.ResponseWriter, r *http.Request) {
 
 	// Log the user in
 	login(w, r)
-	// // Create session
-	// sessions[sID.String()] = u.email
-	// // Create HMAC hash from sessionID
-	// JWTToken, err := createJWT(sID.String())
-	// if err != nil {
-	// 	message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not create session: %w", err)))
-	// 	http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
-	// 	return
-	// }
-	// // HMACID := getHMAC(sID.String())
-	// // Create cookie
-	// cookie = &http.Cookie{
-	// 	Name:  "myCookie",
-	// 	Value: JWTToken,
-	// }
-	// http.SetCookie(w, cookie)
-
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 
 }
@@ -524,7 +586,8 @@ func (c *Controller) procces(w http.ResponseWriter, r *http.Request) {
 }
 
 // ****************************** login ******************************
-// login logs a user in
+
+// login logs a user in and creates a session
 func login(w http.ResponseWriter, r *http.Request) {
 	//generate uuid
 	sID, err := uuid.NewV4()

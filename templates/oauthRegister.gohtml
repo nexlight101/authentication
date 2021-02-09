@@ -24,23 +24,30 @@
             </div>
         </header>
             <div class="card-footer border-0">
-                <p>Cookie value: {{.Cookie}}</p>
-                <p>Message:{{.Message}}</p>
+                {{/* <p>Message: {{.Message}}</p> */}}
+                <p>You are registering from: {{.Provider}}</p>
             </div>
         <p> Oauth2 Register: </p>
         <div>
             <form action="/oauth2/register" method="POST">
                 <div id="input">
                     <label for="email">email:</label><br>
-                    <input name="email" type="email" id="email" required >
+                    <input name="email" type="email" id="email" value={{.Email}} required >
                 </div>
                 <div id="input">
                     <label for="first">First Name:</label><br>
-                    <input name="first" type="text" id="first" placeholder="First Name" required>
+                    <input name="first" type="text" id="first" value={{.Name}} required>
                 </div>
                 <div id="input">
                     <label for="age">age:</label><br>
                     <input name="age" id="age" type="text">
+                </div>
+                <div id="input">
+                    <input name="id" id="id" type="hidden" value={{.ID}}>
+                </div>
+                <div id="input">
+                    <input name="terms" id="terms" type="checkbox" required>
+                    <label for="terms">Agree to terms of service:</label><br>
                 </div>
                 <div id="input"><br>
                     <button type="submit"> Register </button>
