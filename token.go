@@ -50,7 +50,7 @@ func (u MyCustomClaims) Valid() error {
 	return nil
 }
 
-// parseJWT Parses a jwt token takes in a signed token as a string and returns a *MyCustomClaims and error
+// parseJWT Parses a jwt signed token takes in a signed token as a string and returns a string(message) and error
 func parseJWT(signedToken string) (string, error) {
 	// check signature - this is weird!! you don't need an instance just a type of MyCustomClaims
 	// this firstly uses the token(in the callback function) and then verifies it in the same step.

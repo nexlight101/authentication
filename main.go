@@ -138,6 +138,18 @@ func main() {
 // ***************************** Oauth2 routes ***************************
 // oauth2PartialRegister GET route: handles the registration of an oauth user:/partial-register
 func (c *Controller) oauth2PartialRegister(w http.ResponseWriter, r *http.Request) {
+	var (
+		name  string
+		email string
+	)
+	switch u.provider {
+	case "Amazon":
+		name = aR.Name
+		email = aR.Email
+	case "Github":
+		name = ""
+		email = ""
+	}
 	// populate the template struct with values
 	templateData := struct {
 		ID       string
@@ -146,8 +158,8 @@ func (c *Controller) oauth2PartialRegister(w http.ResponseWriter, r *http.Reques
 		Provider string
 	}{
 		ID:       sToken,
-		Name:     aR.Name,
-		Email:    aR.Email,
+		Name:     name,
+		Email:    email,
 		Provider: u.provider,
 	}
 	c.tpl.ExecuteTemplate(w, "oauthRegister.gohtml", templateData)
@@ -160,6 +172,7 @@ func (c *Controller) oauth2Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Println("Oauth2 register route has started")
+	// Extract all from values and populate the user struct
 	u.email = r.FormValue("email")
 	fmt.Println(u.email)
 	if u.email == "" {
@@ -187,10 +200,20 @@ func (c *Controller) oauth2Register(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("age provided: ", u.age)
 
 	}
-	// Retrieve the hidden ID
-	u.oauthID = r.FormValue("id")
+	// Retrieve the hidden ID(oauthID in signed token form JWT(JSon Web Token))
+	oauthID := r.FormValue("id")
+	// Parse the provider ID from the retrieved token
+	id, err := parseJWT(oauthID)
+	if err != nil {
+		message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Cannot parse token: %w", err)))
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
+	u.oauthID = id
+	// Store the provider ID with the email(userID) in the oauthconnectiongs map
+	oauth2Connections[u.oauthID] = u.email
 	login(w, r)
-	fmt.Printf("Amazon userID: %s \nAmazon Email: %v \n", aR.UserID, aR.Email)
+	fmt.Printf("Provider userID: %s \nProvider Email: %v \n", id, u.email)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -208,16 +231,23 @@ func (c *Controller) startGithubOauth(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
+	// Assign an expiry time(1 hour) to the state
 	stateConnections[state.String()] = time.Now().Add(60 * time.Minute)
 	redirectURL := githubOauthConfig.AuthCodeURL(state.String()) // The state("0000") will be a unique identifier per login attempt
+	// Now redirect to amazon to start the Oauth procces
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 // completeGithubOauth handle the Github route. To origanize the github login page:/oauth2/github/receive
 func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("/oauth2/github/receive activated!")
 	code := r.FormValue("code")
 	state := r.FormValue("state")
-	fmt.Println("/oauth2/github/receive activated!")
+	if code == "" || state == "" {
+		message = url.QueryEscape("Invalid response from Amazon")
+		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+		return
+	}
 	expireTime, ok := stateConnections[state]
 	if !ok {
 		message = url.QueryEscape("Could not find state")
@@ -230,14 +260,15 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 		return
 	}
-	// Retrieve a token
+	// Retrieve a token by exchanging our code for a token
 	token, err := githubOauthConfig.Exchange(r.Context(), code)
 	if err != nil {
 		http.Error(w, "Couldn't login", http.StatusInternalServerError)
 		return
 	}
 
-	// Get token source
+	// Get token source this includes the shortterm token and refreshed token
+	// token sourse will automatically refresh your token to be current
 	ts := githubOauthConfig.TokenSource(r.Context(), token)
 	client := oauth2.NewClient(r.Context(), ts)
 	// Create a reader from a string using strings package
@@ -250,6 +281,7 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer resp.Body.Close()
+	fmt.Printf("Json response from Github: %v\n", resp.Body)
 	err = json.NewDecoder(resp.Body).Decode(&gR)
 	if err != nil {
 		http.Error(w, "Github invalid response", http.StatusInternalServerError)
@@ -257,15 +289,25 @@ func (c *Controller) completeGithubOauth(w http.ResponseWriter, r *http.Request)
 	}
 	githubID = gR.Data.Viewer.ID
 	fmt.Printf("GithubID: %v \n", githubID)
-	_, ok = oauth2Connections[githubID]
+	u.email, ok = oauth2Connections[githubID]
 	if !ok { // New user register him
 		// new user - create account
-		// Jipo the email address to bypass registration temperary
-		u.email = "piettie@uk.gov"
-		oauth2Connections[githubID] = u.email
+		// Sign the Github's userID
+		sToken, err = createJWT(githubID)
+		if err != nil {
+			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not sign provider ID: %w", err)))
+			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
+			return
+		}
+
+		// Populate the provider field in user struct
+		u.provider = "Github"
+		// Register the new user
+		http.Redirect(w, r, "/partial-register", http.StatusSeeOther)
+		return
 	}
 	login(w, r)
-
+	fmt.Printf("Github userID: %s \nGithub Email: %v \n", gR.Data.Viewer.ID, u.email)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -345,19 +387,18 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 	}
 	amazonID = aR.UserID
 	fmt.Printf("amazonID: %v \n", amazonID)
-	// Store the Amazon ID with the email(userID) in the oauthconnectiongs map
+	// Check if there is a connection for this amazon ID
 	u.email, ok = oauth2Connections[amazonID]
 	if !ok { // New user register him
 		// new user - create account
 		// Sign the amazon's userID
-		sToken, err := createJWT(amazonID)
+		sToken, err = createJWT(amazonID)
 		if err != nil {
 			message = url.QueryEscape(fmt.Sprintf("%v", fmt.Errorf("Could not sign provider ID: %w", err)))
 			http.Redirect(w, r, "/?message="+message, http.StatusSeeOther)
 			return
 		}
-		// Populate the oauth connections map with the signed token as user ID.
-		oauth2Connections[sToken] = u.email
+
 		// Populate the provider field in user struct
 		u.provider = "Amazon"
 
@@ -367,7 +408,7 @@ func (c *Controller) completeAmazonOauth(w http.ResponseWriter, r *http.Request)
 
 	}
 	login(w, r)
-	fmt.Printf("Amazon userID: %s \nAmazon Email: %v \n", aR.UserID, aR.Email)
+	fmt.Printf("Amazon userID: %s \nAmazon Email: %v \n", aR.UserID, u.email)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

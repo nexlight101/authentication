@@ -24,19 +24,17 @@
             </div>
         </header>
             <div class="card-footer border-0">
-                {{/* <p>Message: {{.Message}}</p> */}}
-                <p>You are registering from: {{.Provider}}</p>
+                <p>Registering Oauth2 user from: {{.Provider}}</p>
             </div>
-        <p> Oauth2 Register: </p>
         <div>
             <form action="/oauth2/register" method="POST">
                 <div id="input">
                     <label for="email">email:</label><br>
-                    <input name="email" type="email" id="email" value={{.Email}} required >
+                    <input name="email" type="email" id="email" required value={{.Email}}>
                 </div>
                 <div id="input">
                     <label for="first">First Name:</label><br>
-                    <input name="first" type="text" id="first" value={{.Name}} required>
+                    <input name="first" type="text" id="first" required value={{.Name}}>
                 </div>
                 <div id="input">
                     <label for="age">age:</label><br>
